@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import supabase from '../lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
+import * as XLSX from 'xlsx'
 
 export default function Inventory() {
   const [products, setProducts] = useState([])
+  const [filteredProducts, setFilteredProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [uploading, setUploading] = useState(false)
+  const [pastedImage, setPastedImage] = useState(null)
+  const imageInputRef = useRef(null)
   const [selectedVariation, setSelectedVariation] = useState(null)
   const [showStockModal, setShowStockModal] = useState(false)
   const [stockUpdate, setStockUpdate] = useState({ type: 'add', quantity: 1, reason: '' })
@@ -16,6 +20,7 @@ export default function Inventory() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [stockFilter, setStockFilter] = useState('All')
+  const [categories, setCategories] = useState(['All'])
   
   const [formData, setFormData] = useState({
     code: '',
@@ -26,21 +31,63 @@ export default function Inventory() {
     variety: '',
     material: '',
     weight_grams: '',
+    weight_with_20_percent: '',
     dimensions: '',
+    strap_length: '',
+    opening_type: '',
     price: 0,
     main_sku: '',
+    image_url: '',
     status: 'active'
   })
 
+  // Fetch products
   useEffect(() => {
     fetchProducts()
   }, [])
 
+  // Fetch categories dynamically
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('category')
+          .not('category', 'is', null)
+        
+        if (error) throw error
+        
+        if (data) {
+          const uniqueCategories = ['All', ...new Set(data.map(p => p.category))]
+          setCategories(uniqueCategories)
+        }
+      } catch (error) {
+        console.error('Error fetching categories:', error)
+      }
+    }
+    fetchCategories()
+  }, [])
+
+  // Apply filters
+  useEffect(() => {
+    let filtered = [...products]
+    
+    if (searchTerm) {
+      filtered = filtered.filter(product =>
+        product.name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+    
+    if (selectedCategory !== 'All') {
+      filtered = filtered.filter(product => product.category === selectedCategory)
+    }
+    
+    setFilteredProducts(filtered)
+  }, [products, searchTerm, selectedCategory])
+
   async function fetchProducts() {
     try {
       setLoading(true)
-      
-      // Fetch products with their variations
       const { data, error } = await supabase
         .from('products')
         .select(`
@@ -51,63 +98,12 @@ export default function Inventory() {
       
       if (error) throw error
       setProducts(data || [])
+      setFilteredProducts(data || [])
     } catch (error) {
       console.error('Error fetching products:', error)
       alert('Error fetching products: ' + error.message)
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function handleStockUpdate(variation, type) {
-    setSelectedVariation(variation)
-    setStockUpdate({ type, quantity: 1, reason: '' })
-    setShowStockModal(true)
-  }
-
-  async function submitStockUpdate() {
-    try {
-      const variation = selectedVariation
-      const newQuantity = stockUpdate.type === 'add' 
-        ? (variation.quantity || 0) + stockUpdate.quantity
-        : (variation.quantity || 0) - stockUpdate.quantity
-      
-      if (newQuantity < 0) {
-        alert('Cannot reduce stock below 0!')
-        return
-      }
-
-      // Update variation quantity
-      const { error: updateError } = await supabase
-        .from('product_variations')
-        .update({ quantity: newQuantity })
-        .eq('id', variation.id)
-      
-      if (updateError) throw updateError
-
-      // Record inventory movement
-      const { error: movementError } = await supabase
-        .from('inventory_movements')
-        .insert([{
-          product_id: variation.product_id,
-          variation_id: variation.id,
-          movement_type: stockUpdate.type === 'add' ? 'in' : 'out',
-          quantity: stockUpdate.quantity,
-          previous_quantity: variation.quantity || 0,
-          new_quantity: newQuantity,
-          reason: stockUpdate.reason || (stockUpdate.type === 'add' ? 'Stock added' : 'Stock removed'),
-          created_by: 'Admin'
-        }])
-      
-      if (movementError) throw movementError
-
-      await fetchProducts()
-      setShowStockModal(false)
-      setSelectedVariation(null)
-      alert(`Stock ${stockUpdate.type === 'add' ? 'added' : 'removed'} successfully!`)
-    } catch (error) {
-      console.error('Error updating stock:', error)
-      alert('Error updating stock: ' + error.message)
     }
   }
 
@@ -136,6 +132,23 @@ export default function Inventory() {
       return null
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handlePaste = async (e) => {
+    const items = e.clipboardData.items
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile()
+        if (file) {
+          const imageUrl = await uploadImage(file)
+          if (imageUrl) {
+            setFormData({...formData, image_url: imageUrl})
+            setPastedImage(imageUrl)
+          }
+        }
+        break
+      }
     }
   }
 
@@ -187,6 +200,88 @@ export default function Inventory() {
     }
   }
 
+  async function handleStockUpdate(variation, type) {
+    setSelectedVariation(variation)
+    setStockUpdate({ type, quantity: 1, reason: '' })
+    setShowStockModal(true)
+  }
+
+  async function submitStockUpdate() {
+    try {
+      const variation = selectedVariation
+      const newQuantity = stockUpdate.type === 'add' 
+        ? (variation.quantity || 0) + stockUpdate.quantity
+        : (variation.quantity || 0) - stockUpdate.quantity
+      
+      if (newQuantity < 0) {
+        alert('Cannot reduce stock below 0!')
+        return
+      }
+
+      const { error: updateError } = await supabase
+        .from('product_variations')
+        .update({ quantity: newQuantity })
+        .eq('id', variation.id)
+      
+      if (updateError) throw updateError
+
+      const { error: movementError } = await supabase
+        .from('inventory_movements')
+        .insert([{
+          product_id: variation.product_id,
+          variation_id: variation.id,
+          movement_type: stockUpdate.type === 'add' ? 'in' : 'out',
+          quantity: stockUpdate.quantity,
+          previous_quantity: variation.quantity || 0,
+          new_quantity: newQuantity,
+          reason: stockUpdate.reason || (stockUpdate.type === 'add' ? 'Stock added' : 'Stock removed'),
+          created_by: 'Admin'
+        }])
+      
+      if (movementError) throw movementError
+
+      await fetchProducts()
+      setShowStockModal(false)
+      setSelectedVariation(null)
+      alert(`Stock ${stockUpdate.type === 'add' ? 'added' : 'removed'} successfully!`)
+    } catch (error) {
+      console.error('Error updating stock:', error)
+      alert('Error updating stock: ' + error.message)
+    }
+  }
+
+  function exportToExcel() {
+    if (filteredProducts.length === 0) {
+      alert('No products to export!')
+      return
+    }
+
+    const exportData = filteredProducts.map(product => ({
+      'Code': product.code,
+      'Product Name': product.name,
+      'Category': product.category,
+      'Sub Category': product.sub_category,
+      'Size': product.size,
+      'Variety': product.variety,
+      'Material': product.material,
+      'Weight (g)': product.weight_grams,
+      'Dimensions': product.dimensions,
+      'Price (RM)': product.price,
+      'Main SKU': product.main_sku,
+      'Status': product.status
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(exportData)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventory')
+    
+    const date = new Date()
+    const filename = `inventory_${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}.xlsx`
+    XLSX.writeFile(wb, filename)
+    
+    alert(`Exported ${filteredProducts.length} products to ${filename}`)
+  }
+
   function resetForm() {
     setFormData({
       code: '',
@@ -197,11 +292,16 @@ export default function Inventory() {
       variety: '',
       material: '',
       weight_grams: '',
+      weight_with_20_percent: '',
       dimensions: '',
+      strap_length: '',
+      opening_type: '',
       price: 0,
       main_sku: '',
+      image_url: '',
       status: 'active'
     })
+    setPastedImage(null)
     setEditingProduct(null)
   }
 
@@ -216,64 +316,24 @@ export default function Inventory() {
       variety: product.variety || '',
       material: product.material || '',
       weight_grams: product.weight_grams || '',
+      weight_with_20_percent: product.weight_with_20_percent || '',
       dimensions: product.dimensions || '',
+      strap_length: product.strap_length || '',
+      opening_type: product.opening_type || '',
       price: product.price || 0,
       main_sku: product.main_sku || '',
+      image_url: product.image_url || '',
       status: product.status || 'active'
     })
     setShowModal(true)
   }
 
-  // Filter products
-  const filteredProducts = products.filter(product => {
-    if (searchTerm && !product.name.toLowerCase().includes(searchTerm.toLowerCase())) {
-      return false
-    }
-    if (selectedCategory !== 'All' && product.category !== selectedCategory) {
-      return false
-    }
-    return true
-  })
-
-  const [categories, setCategories] = useState(['All'])
-  // Fetch unique categories from database
-useEffect(() => {
-  async function fetchCategories() {
-    const { data } = await supabase
-      .from('products')
-      .select('category')
-      .not('category', 'is', null)
-    
-    if (data) {
-      const uniqueCategories = ['All', ...new Set(data.map(p => p.category).filter(Boolean))]
-      setCategories(uniqueCategories)
-    }
+  function clearFilters() {
+    setSearchTerm('')
+    setSelectedCategory('All')
+    setStockFilter('All')
   }
-  fetchCategories()
-}, [])
-// Add this after your existing useEffect
-useEffect(() => {
-  async function fetchCategories() {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('category')
-        .not('category', 'is', null)
-      
-      if (error) throw error
-      
-      if (data) {
-        const uniqueCategories = ['All', ...new Set(data.map(p => p.category))]
-        setCategories(uniqueCategories)
-      }
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-    }
-  }
-  fetchCategories()
-}, [])
 
-  // Calculate total stock
   const totalProducts = products.length
   const totalStock = products.reduce((sum, p) => {
     const variationStock = p.product_variations?.reduce((s, v) => s + (v.quantity || 0), 0) || 0
@@ -285,14 +345,16 @@ useEffect(() => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
         <h1 className="text-3xl font-bold text-gray-800">Inventory Management</h1>
-        <button
-          onClick={() => { resetForm(); setShowModal(true) }}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg"
-        >
-          + Add Product
-        </button>
+        <div className="flex gap-3">
+          <button onClick={exportToExcel} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg flex items-center gap-2">
+            📊 Export to Excel
+          </button>
+          <button onClick={() => { resetForm(); setShowModal(true) }} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg">
+            + Add Product
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -320,7 +382,7 @@ useEffect(() => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <input
             type="text"
-            placeholder="Search by product name..."
+            placeholder="🔍 Search by product name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
@@ -332,6 +394,11 @@ useEffect(() => {
           >
             {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
+          {(searchTerm || selectedCategory !== 'All') && (
+            <button onClick={clearFilters} className="text-blue-600 hover:text-blue-800 text-sm">
+              Clear All Filters
+            </button>
+          )}
         </div>
       </div>
 
@@ -345,19 +412,25 @@ useEffect(() => {
           {filteredProducts.map((product) => (
             <div key={product.id} className="bg-white rounded-xl shadow-md overflow-hidden">
               <div className="p-6">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-800">{product.name}</h2>
-                    <div className="flex gap-2 mt-1">
-                      <span className="text-sm text-gray-500">Code: {product.code || 'N/A'}</span>
-                      <span className="text-sm text-gray-500">SKU: {product.main_sku || 'N/A'}</span>
-                      <span className={`text-sm px-2 py-0.5 rounded-full ${product.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {product.status}
-                      </span>
+                <div className="flex justify-between items-start flex-wrap gap-4">
+                  <div className="flex gap-4">
+                    {product.image_url && (
+                      <img src={product.image_url} alt={product.name} className="w-24 h-24 object-cover rounded-lg" />
+                    )}
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-800">{product.name}</h2>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        <span className="text-sm text-gray-500">Code: {product.code || 'N/A'}</span>
+                        <span className="text-sm text-gray-500">SKU: {product.main_sku || 'N/A'}</span>
+                        <span className={`text-sm px-2 py-0.5 rounded-full ${product.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {product.status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500 mt-1">Category: {product.category} {product.sub_category && `> ${product.sub_category}`}</p>
+                      <p className="text-sm text-gray-500">Size: {product.size} | Material: {product.material || 'N/A'}</p>
+                      {product.dimensions && <p className="text-sm text-gray-500">Dimensions: {product.dimensions}</p>}
+                      <p className="text-sm text-gray-500 font-semibold">Price: RM {product.price}</p>
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">Category: {product.category} {product.sub_category && `> ${product.sub_category}`}</p>
-                    {product.material && <p className="text-sm text-gray-500">Material: {product.material}</p>}
-                    {product.dimensions && <p className="text-sm text-gray-500">Dimensions: {product.dimensions}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => editProduct(product)} className="text-blue-600 hover:text-blue-800">✏️ Edit</button>
@@ -379,7 +452,7 @@ useEffect(() => {
                             <th className="text-left py-2">Stock</th>
                             <th className="text-left py-2">Actions</th>
                           </tr>
-                                                </thead>
+                        </thead>
                         <tbody>
                           {product.product_variations.map((variation) => (
                             <tr key={variation.id} className="border-b">
@@ -394,7 +467,7 @@ useEffect(() => {
                               <td className="py-2">
                                 <div className="flex gap-2">
                                   <button onClick={() => handleStockUpdate(variation, 'add')} className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs">
-                                    + Add Stock
+                                    + Add
                                   </button>
                                   <button onClick={() => handleStockUpdate(variation, 'remove')} className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs">
                                     - Remove
@@ -421,7 +494,7 @@ useEffect(() => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6">
             <h2 className="text-xl font-bold mb-4">
-              {stockUpdate.type === 'add' ? 'Add Stock' : 'Remove Stock'}
+              {stockUpdate.type === 'add' ? '➕ Add Stock' : '➖ Remove Stock'}
             </h2>
             <p className="text-gray-600 mb-4">
               Product: {selectedVariation.variation_type} - {selectedVariation.variation_value}
@@ -461,51 +534,107 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Product Modal (Add/Edit) - Simplified for now */}
+      {/* Product Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6">
-            <h2 className="text-xl font-bold mb-4">{editingProduct ? 'Edit Product' : 'Add Product'}</h2>
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6" onPaste={handlePaste}>
+            <h2 className="text-xl font-bold mb-4">{editingProduct ? '✏️ Edit Product' : '➕ Add New Product'}</h2>
             <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Product Code</label>
-                <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value})} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Product Code</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.code} onChange={(e) => setFormData({...formData, code: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Product Name *</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Category *</label>
+                  <select className="w-full px-4 py-2 border rounded-lg" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} required>
+                    <option>Bags</option>
+                    <option>Shopping Bags</option>
+                    <option>Rugs</option>
+                    <option>Ottomans</option>
+                    <option>Pet</option>
+                    <option>Accessories</option>
+                    <option>Blankets</option>
+                  </select>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Sub Category</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.sub_category} onChange={(e) => setFormData({...formData, sub_category: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Size</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.size} onChange={(e) => setFormData({...formData, size: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Variety</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.variety} onChange={(e) => setFormData({...formData, variety: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Material</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.material} onChange={(e) => setFormData({...formData, material: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Weight (grams)</label>
+                  <input type="number" className="w-full px-4 py-2 border rounded-lg" value={formData.weight_grams} onChange={(e) => setFormData({...formData, weight_grams: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Dimensions</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.dimensions} onChange={(e) => setFormData({...formData, dimensions: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Price (RM)</label>
+                  <input type="number" step="0.01" className="w-full px-4 py-2 border rounded-lg" value={formData.price} onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Main SKU</label>
+                  <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.main_sku} onChange={(e) => setFormData({...formData, main_sku: e.target.value})} />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">Status</label>
+                  <select className="w-full px-4 py-2 border rounded-lg" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
+                    <option value="active">Active</option>
+                    <option value="discontinued">Discontinued</option>
+                    <option value="draft">Draft</option>
+                  </select>
+                </div>
               </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Product Name *</label>
-                <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Category *</label>
-                <select className="w-full px-4 py-2 border rounded-lg" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} required>
-                  <option>Bags</option>
-                  <option>Shopping Bags</option>
-                  <option>Rugs</option>
-                  <option>Ottomans</option>
-                  <option>Pet</option>
-                  <option>Accessories</option>
-                  <option>Blankets</option>
-                </select>
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Size</label>
-                <input type="text" className="w-full px-4 py-2 border rounded-lg" value={formData.size} onChange={(e) => setFormData({...formData, size: e.target.value})} />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Price (RM)</label>
-                <input type="number" step="0.01" className="w-full px-4 py-2 border rounded-lg" value={formData.price} onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})} />
-              </div>
+              
               <div className="mb-6">
-                <label className="block text-sm font-medium mb-1">Status</label>
-                <select className="w-full px-4 py-2 border rounded-lg" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
-                  <option value="active">Active</option>
-                  <option value="discontinued">Discontinued</option>
-                  <option value="draft">Draft</option>
-                </select>
+                <label className="block text-sm font-medium mb-1">Product Image</label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center" onPaste={handlePaste}>
+                  <p className="text-sm text-gray-500 mb-2">📋 Press Ctrl+V (Cmd+V on Mac) to paste an image</p>
+                  <p className="text-xs text-gray-400">or</p>
+                  <button type="button" onClick={() => imageInputRef.current?.click()} className="text-sm text-blue-600 hover:text-blue-800 mt-2">
+                    Click to upload file
+                  </button>
+                  <input type="file" ref={imageInputRef} accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files[0]
+                    if (file) {
+                      const imageUrl = await uploadImage(file)
+                      if (imageUrl) setFormData({...formData, image_url: imageUrl})
+                    }
+                  }} />
+                </div>
+                {formData.image_url && (
+                  <div className="mt-3">
+                    <img src={formData.image_url} alt="Preview" className="w-32 h-32 object-cover rounded-lg mx-auto" />
+                    <p className="text-xs text-green-600 text-center mt-1">✓ Image ready</p>
+                  </div>
+                )}
+                {uploading && <p className="text-sm text-blue-600 text-center mt-2">Uploading...</p>}
               </div>
+
               <div className="flex space-x-3">
-                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg flex-1">Save</button>
-                <button type="button" onClick={() => setShowModal(false)} className="bg-gray-500 text-white px-4 py-2 rounded-lg flex-1">Cancel</button>
+                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg flex-1" disabled={loading || uploading}>
+                  {loading ? 'Saving...' : 'Save Product'}
+                </button>
+                <button type="button" onClick={() => setShowModal(false)} className="bg-gray-500 text-white px-4 py-2 rounded-lg flex-1">
+                  Cancel
+                </button>
               </div>
             </form>
           </div>
