@@ -134,6 +134,14 @@ export default function Inventory() {
       setUploading(false)
     }
   }
+  async function deleteImage() {
+  if (!formData.image_url) return
+  
+  if (confirm('Remove this image?')) {
+    setFormData({...formData, image_url: ''})
+    setPastedImage(null)
+  }
+}
 
   const handlePaste = async (e) => {
     const items = e.clipboardData.items
@@ -620,11 +628,18 @@ export default function Inventory() {
                   }} />
                 </div>
                 {formData.image_url && (
-                  <div className="mt-3">
-                    <img src={formData.image_url} alt="Preview" className="w-32 h-32 object-cover rounded-lg mx-auto" />
-                    <p className="text-xs text-green-600 text-center mt-1">✓ Image ready</p>
-                  </div>
-                )}
+  <div className="mt-3 relative">
+    <img src={formData.image_url} alt="Preview" className="w-32 h-32 object-cover rounded-lg mx-auto" />
+    <button 
+      type="button"
+      onClick={deleteImage}
+      className="absolute top-0 right-1/3 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 text-xs font-bold"
+    >
+      ✕
+    </button>
+    <p className="text-xs text-green-600 text-center mt-1">✓ Image ready (click ✕ to remove)</p>
+  </div>
+)}
                 {uploading && <p className="text-sm text-blue-600 text-center mt-2">Uploading...</p>}
               </div>
 
