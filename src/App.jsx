@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import DebugEvents from './pages/DebugEvents'
 import Transactions from './pages/Transactions'
+import Reports from './pages/Reports'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -45,7 +46,7 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen">
-        {/* Navigation Bar */}
+        {/* Navigation Bar */} 
         <nav className="bg-white shadow-md sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -66,6 +67,9 @@ function App() {
                   <Link to="/events" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
                     Events
                   </Link>
+                  <Link to="/reports" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
+
+                   </Link>
                 </div>
               </div>
               <div className="flex items-center space-x-4">
@@ -88,6 +92,7 @@ function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/events" element={<Events />} />
             <Route path="/transactions" element={<Transactions />} />
+            <Route path="/reports" element={<Reports />} />
           </Routes>
         </main>
       </div>
