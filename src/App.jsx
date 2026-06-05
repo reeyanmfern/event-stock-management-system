@@ -2,25 +2,22 @@ import React, { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import supabase from './lib/supabase'
 import Inventory from './pages/Inventory'
-import Events from './pages/Events'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
-import DebugEvents from './pages/DebugEvents'
 import Transactions from './pages/Transactions'
 import Reports from './pages/Reports'
+import MultiChannel from './pages/MultiChannel'
 
 function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check current session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setLoading(false)
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
     })
@@ -46,7 +43,7 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen">
-        {/* Navigation Bar */} 
+        {/* Navigation Bar - Clean Inventory Focus */}
         <nav className="bg-white shadow-md sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
@@ -56,20 +53,20 @@ function App() {
                 </h1>
                 <div className="hidden md:flex space-x-4">
                   <Link to="/" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
-                    Dashboard
+                    📊 Dashboard
                   </Link>
                   <Link to="/inventory" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
-                    Inventory
+                    📦 Inventory
                   </Link>
                   <Link to="/transactions" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
-                    Transactions
-                  </Link>
-                  <Link to="/events" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
-                    Events
+                    📜 Stock Movements
                   </Link>
                   <Link to="/reports" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
-
-                   </Link>
+                    📈 Reports
+                  </Link>
+                  <Link to="/multichannel" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md font-medium transition">
+                    🏪 Multi-Channel
+                  </Link>
                 </div>
               </div>
               <div className="flex items-center space-x-4">
@@ -90,9 +87,9 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/inventory" element={<Inventory />} />
-            <Route path="/events" element={<Events />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/multichannel" element={<MultiChannel />} />
           </Routes>
         </main>
       </div>
