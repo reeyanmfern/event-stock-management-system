@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import supabase from '../lib/supabase'
 
 export default function ResetPassword() {
@@ -7,6 +8,7 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
     // Check if we have a hash fragment from Supabase
@@ -14,7 +16,8 @@ export default function ResetPassword() {
     const accessToken = hashParams.get('access_token')
     
     if (!accessToken) {
-      setError('Invalid or expired reset link. Please request a new one.')
+      // Don't show error immediately - user might be coming from email
+      console.log('No access token found in URL')
     }
   }, [])
 
@@ -45,7 +48,7 @@ export default function ResetPassword() {
       
       setMessage('Password updated successfully! Redirecting to login...')
       setTimeout(() => {
-        window.location.href = '/'
+        navigate('/')
       }, 2000)
     } catch (error) {
       setError(error.message)

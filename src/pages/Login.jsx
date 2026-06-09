@@ -40,25 +40,29 @@ export default function Login() {
   }
 
   async function handleForgotPassword(e) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    setMessage('')
+  e.preventDefault()
+  setLoading(true)
+  setError('')
+  setMessage('')
 
-    try {
-      // This works on both localhost and production automatically!
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
-      if (error) throw error
-      setResetEmailSent(true)
-      setMessage('Password reset email sent! Check your inbox.')
-    } catch (error) {
-      setError(error.message)
-    } finally {
-      setLoading(false)
-    }
+  try {
+    // Use absolute URL for production
+    const redirectUrl = window.location.hostname === 'localhost' 
+      ? 'http://localhost:5173/reset-password'
+      : 'https://u4b-inventory-system.vercel.app/reset-password'
+    
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: redirectUrl,
+    })
+    if (error) throw error
+    setResetEmailSent(true)
+    setMessage('Password reset email sent! Check your inbox.')
+  } catch (error) {
+    setError(error.message)
+  } finally {
+    setLoading(false)
   }
+}
 
   // Show forgot password form
   if (isForgotPassword) {
