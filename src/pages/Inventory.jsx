@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import supabase from '../lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import * as XLSX from 'xlsx'
@@ -12,7 +12,11 @@ export default function Inventory() {
   const [uploading, setUploading] = useState(false)
   const [pastedImage, setPastedImage] = useState(null)
   const imageInputRef = useRef(null)
-  const [editingQuantity, setEditingQuantity] = useState(null)
+  
+  // Track which item is being edited
+  const [editingItemId, setEditingItemId] = useState(null)
+  const [editingItemType, setEditingItemType] = useState(null) // 'product' or 'variation'
+  const inputRef = useRef(null)
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -44,6 +48,14 @@ export default function Inventory() {
   useEffect(() => {
     applyFilters()
   }, [products, searchTerm, selectedCategory])
+
+  // Auto-focus input when editing starts
+  useEffect(() => {
+    if (editingItemId && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editingItemId])
 
   async function fetchProducts() {
     try {
@@ -194,51 +206,67 @@ export default function Inventory() {
     }
   }
 
-  // Direct quantity update for products (no variations)
-  async function updateProductQuantity(product, newQuantity) {
+  // Start editing a product quantity
+  function startEditingProduct(product) {
+    setEditingItemId(product.id)
+    setEditingItemType('product')
+    setTempQuantity(product.quantity?.toString() || '0')
+  }
+
+  // Start editing a variation quantity
+  function startEditingVariation(variation) {
+    setEditingItemId(variation.id)
+    setEditingItemType('variation')
+    setTempQuantity(variation.quantity?.toString() || '0')
+  }
+
+  // Save the edited quantity
+  async function saveQuantity(itemId, type, newQuantity) {
     if (newQuantity < 0) {
       alert('Quantity cannot be negative!')
+      setEditingItemId(null)
       return
     }
     
-    try {
-      const { error } = await supabase
-        .from('products')
-        .update({ quantity: newQuantity })
-        .eq('id', product.id)
-      
-      if (error) throw error
-      await fetchProducts()
-      setEditingQuantity(null)
-    } catch (error) {
-      console.error('Error updating quantity:', error)
-      alert('Error updating quantity: ' + error.message)
-    }
-  }
-
-  // Direct quantity update for variations
-  async function updateVariationQuantity(variation, newQuantity) {
-    if (newQuantity < 0) {
-      alert('Quantity cannot be negative!')
-      return
+    // Update local state immediately
+    if (type === 'product') {
+      setProducts(prevProducts => prevProducts.map(p => 
+        p.id === itemId ? { ...p, quantity: newQuantity } : p
+      ))
+    } else {
+      setProducts(prevProducts => prevProducts.map(p => ({
+        ...p,
+        product_variations: p.product_variations?.map(v => 
+          v.id === itemId ? { ...v, quantity: newQuantity } : v
+        )
+      })))
     }
     
+    setEditingItemId(null)
+    
+    // Update database in background
     try {
-      const { error } = await supabase
-        .from('product_variations')
-        .update({ quantity: newQuantity })
-        .eq('id', variation.id)
-      
-      if (error) throw error
-      await fetchProducts()
-      setEditingQuantity(null)
+      if (type === 'product') {
+        const { error } = await supabase
+          .from('products')
+          .update({ quantity: newQuantity })
+          .eq('id', itemId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('product_variations')
+          .update({ quantity: newQuantity })
+          .eq('id', itemId)
+        if (error) throw error
+      }
     } catch (error) {
       console.error('Error updating quantity:', error)
       alert('Error updating quantity: ' + error.message)
+      await fetchProducts() // Revert on error
     }
   }
 
-  // Quick add/remove (no modal, no reason)
+  // Quick add/remove (increment/decrement by 1)
   async function quickStockUpdate(item, type, isVariation = false) {
     const currentQty = isVariation ? (item.quantity || 0) : (item.quantity || 0)
     const newQuantity = type === 'add' ? currentQty + 1 : currentQty - 1
@@ -248,6 +276,21 @@ export default function Inventory() {
       return
     }
     
+    // Update local state immediately
+    if (isVariation) {
+      setProducts(prevProducts => prevProducts.map(p => ({
+        ...p,
+        product_variations: p.product_variations?.map(v => 
+          v.id === item.id ? { ...v, quantity: newQuantity } : v
+        )
+      })))
+    } else {
+      setProducts(prevProducts => prevProducts.map(p => 
+        p.id === item.id ? { ...p, quantity: newQuantity } : p
+      ))
+    }
+    
+    // Update database in background
     try {
       if (isVariation) {
         const { error } = await supabase
@@ -262,10 +305,10 @@ export default function Inventory() {
           .eq('id', item.id)
         if (error) throw error
       }
-      await fetchProducts()
     } catch (error) {
       console.error('Error updating stock:', error)
       alert('Error updating stock: ' + error.message)
+      await fetchProducts()
     }
   }
 
@@ -444,38 +487,46 @@ export default function Inventory() {
                               <p className="text-xs text-gray-500 mb-1">Current Stock</p>
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => quickStockUpdate(product, 'remove', false)}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    quickStockUpdate(product, 'remove', false)
+                                  }}
                                   className="bg-red-500 hover:bg-red-600 text-white w-8 h-8 rounded-full font-bold text-lg flex items-center justify-center"
                                 >
                                   -
                                 </button>
                                 
-                                {editingQuantity === product.id ? (
+                                {editingItemId === product.id && editingItemType === 'product' ? (
                                   <input
+                                    ref={inputRef}
                                     type="number"
                                     className="w-20 text-center py-1 border border-blue-500 rounded-lg focus:outline-none"
                                     defaultValue={product.quantity || 0}
                                     onBlur={(e) => {
-                                      updateProductQuantity(product, parseInt(e.target.value) || 0)
+                                      saveQuantity(product.id, 'product', parseInt(e.target.value) || 0)
                                     }}
                                     onKeyPress={(e) => {
                                       if (e.key === 'Enter') {
-                                        updateProductQuantity(product, parseInt(e.target.value) || 0)
+                                        saveQuantity(product.id, 'product', parseInt(e.target.value) || 0)
                                       }
                                     }}
-                                    autoFocus
                                   />
                                 ) : (
                                   <span 
                                     className="text-2xl font-bold text-blue-600 cursor-pointer px-3 py-1 rounded-lg hover:bg-blue-50"
-                                    onClick={() => setEditingQuantity(product.id)}
+                                    onClick={() => startEditingProduct(product)}
                                   >
                                     {product.quantity || 0}
                                   </span>
                                 )}
                                 
                                 <button
-                                  onClick={() => quickStockUpdate(product, 'add', false)}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    quickStockUpdate(product, 'add', false)
+                                  }}
                                   className="bg-green-500 hover:bg-green-600 text-white w-8 h-8 rounded-full font-bold text-lg flex items-center justify-center"
                                 >
                                   +
@@ -504,7 +555,7 @@ export default function Inventory() {
                               <th className="text-left py-2">Type</th>
                               <th className="text-left py-2">Value</th>
                               <th className="text-left py-2">SKU</th>
-                              <th className="text-center py-2" colSpan="3">Stock Control</th>
+                              <th className="text-center py-2">Stock Control</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -513,48 +564,56 @@ export default function Inventory() {
                                 <td className="py-2">{variation.variation_type}</td>
                                 <td className="py-2">{variation.variation_value}</td>
                                 <td className="py-2 text-xs">{variation.sku || '-'}</td>
-                                <td className="py-2 text-center">
+                                <td className="py-2">
                                   <div className="flex items-center justify-center gap-2">
                                     <button
-                                      onClick={() => quickStockUpdate(variation, 'remove', true)}
-                                      className="bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full font-bold text-sm"
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        quickStockUpdate(variation, 'remove', true)
+                                      }}
+                                      className="bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full font-bold text-sm flex items-center justify-center"
                                     >
                                       -
                                     </button>
                                     
-                                    {editingQuantity === variation.id ? (
+                                    {editingItemId === variation.id && editingItemType === 'variation' ? (
                                       <input
+                                        ref={inputRef}
                                         type="number"
                                         className="w-16 text-center py-1 border border-blue-500 rounded-lg text-sm"
                                         defaultValue={variation.quantity || 0}
                                         onBlur={(e) => {
-                                          updateVariationQuantity(variation, parseInt(e.target.value) || 0)
+                                          saveQuantity(variation.id, 'variation', parseInt(e.target.value) || 0)
                                         }}
                                         onKeyPress={(e) => {
                                           if (e.key === 'Enter') {
-                                            updateVariationQuantity(variation, parseInt(e.target.value) || 0)
+                                            saveQuantity(variation.id, 'variation', parseInt(e.target.value) || 0)
                                           }
                                         }}
-                                        autoFocus
                                       />
                                     ) : (
                                       <span 
                                         className="font-bold text-blue-600 cursor-pointer px-2 py-1 rounded hover:bg-blue-50 min-w-[40px] text-center"
-                                        onClick={() => setEditingQuantity(variation.id)}
+                                        onClick={() => startEditingVariation(variation)}
                                       >
                                         {variation.quantity || 0}
                                       </span>
                                     )}
                                     
                                     <button
-                                      onClick={() => quickStockUpdate(variation, 'add', true)}
-                                      className="bg-green-500 hover:bg-green-600 text-white w-7 h-7 rounded-full font-bold text-sm"
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        quickStockUpdate(variation, 'add', true)
+                                      }}
+                                      className="bg-green-500 hover:bg-green-600 text-white w-7 h-7 rounded-full font-bold text-sm flex items-center justify-center"
                                     >
                                       +
                                     </button>
                                   </div>
-                                 </td>
-                               </tr>
+                                </td>
+                               </table>
                             ))}
                           </tbody>
                         </table>
