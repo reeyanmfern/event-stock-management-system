@@ -57,7 +57,7 @@ export default function Dashboard() {
         totalValue += productValue
       })
 
-      // Get recent stock movements
+      // Get recent stock movements (last 10)
       const { data: movements } = await supabase
         .from('inventory_movements')
         .select(`
@@ -134,7 +134,7 @@ export default function Dashboard() {
               <tbody>
                 {recentMovements.map((movement) => (
                   <tr key={movement.id} className="border-b">
-                    <td className="py-2">{movement.products?.name || '-'} (<span className="text-xs">{movement.products?.code}</span>)</td>
+                    <td className="py-2">{movement.products?.name || '-'} <span className="text-xs text-gray-400">({movement.products?.code})</span></td>
                     <td className="py-2">
                       <span className={`px-2 py-1 rounded-full text-xs ${
                         movement.movement_type === 'in' 
