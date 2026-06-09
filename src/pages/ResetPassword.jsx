@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import supabase from '../lib/supabase'
 
@@ -9,14 +9,6 @@ export default function ResetPassword() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const navigate = useNavigate()
-
-  useEffect(() => {
-    // Get the access token from URL hash
-    const hash = window.location.hash
-    if (!hash || !hash.includes('access_token')) {
-      setError('Invalid or expired reset link. Please request a new one.')
-    }
-  }, [])
 
   async function handleResetPassword(e) {
     e.preventDefault()
