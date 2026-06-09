@@ -8,11 +8,12 @@ export default function ResetPasswordCallback() {
     // Get the full URL with hash
     const hash = window.location.hash
     
-    if (hash) {
+    if (hash && hash.includes('access_token')) {
       // Redirect to the main reset page with the hash
       window.location.href = `/reset-password${hash}`
     } else {
-      navigate('/login')
+      // If no hash, just go to reset page (let it handle gracefully)
+      navigate('/reset-password')
     }
   }, [navigate])
 
