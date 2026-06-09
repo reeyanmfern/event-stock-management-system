@@ -66,10 +66,21 @@ function App() {
     )
   }
 
+  // Public routes (no login required)
   if (!session) {
-    return <Login />
+    return (
+      <Router>
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/reset-password-callback" element={<ResetPasswordCallback />} />
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </Router>
+    )
   }
 
+  // Authenticated routes (login required)
   const isAdmin = userRole === 'admin'
 
   return (
@@ -121,8 +132,6 @@ function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/multichannel" element={<MultiChannel />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/reset-password-callback" element={<ResetPasswordCallback />} /> 
           </Routes>
         </main>
       </div>
