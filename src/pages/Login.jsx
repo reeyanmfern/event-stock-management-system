@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import supabase from '../lib/supabase'
 
-export default function Login({ onLogin }) {
+export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -31,7 +31,6 @@ export default function Login({ onLogin }) {
           password,
         })
         if (error) throw error
-        // onLogin is called automatically by App.js when session changes
       }
     } catch (error) {
       setError(error.message)
@@ -47,8 +46,9 @@ export default function Login({ onLogin }) {
     setMessage('')
 
     try {
+      // This works on both localhost and production automatically!
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/reset-password',
+        redirectTo: `${window.location.origin}/reset-password`,
       })
       if (error) throw error
       setResetEmailSent(true)

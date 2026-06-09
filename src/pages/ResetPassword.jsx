@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import supabase from '../lib/supabase'
 
 export default function ResetPassword() {
@@ -8,7 +7,6 @@ export default function ResetPassword() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
-  const navigate = useNavigate()
 
   useEffect(() => {
     // Check if we have a hash fragment from Supabase
@@ -47,7 +45,7 @@ export default function ResetPassword() {
       
       setMessage('Password updated successfully! Redirecting to login...')
       setTimeout(() => {
-        navigate('/')
+        window.location.href = '/'
       }, 2000)
     } catch (error) {
       setError(error.message)
