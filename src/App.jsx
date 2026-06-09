@@ -6,7 +6,8 @@ import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Reports from './pages/Reports'
 import MultiChannel from './pages/MultiChannel'
-import ResetPassword from './pages/ResetPassword'
+import UpdatePassword from './pages/UpdatePassword'
+
 
 function App() {
   const [session, setSession] = useState(null)
@@ -71,7 +72,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/" element={<Login />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
+           <Route path="/update-password" element={<UpdatePassword />} />
           <Route path="*" element={<Login />} />
         </Routes>
       </Router>
