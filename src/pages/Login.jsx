@@ -40,25 +40,25 @@ export default function Login() {
   }
 
   async function handleForgotPassword(e) {
-  e.preventDefault()
-  setLoading(true)
-  setError('')
-  setMessage('')
+  e.preventDefault();
+  setLoading(true);
+  setError('');
+  setMessage('');
 
   try {
+    // Use a hash fragment so the token is passed to your page
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://u4b-inventory-system.vercel.app/reset-password',
-    })
-    if (error) throw error
-    setResetEmailSent(true)
-    setMessage('Password reset email sent! Check your inbox.')
+      redirectTo: 'https://u4b-inventory-system.vercel.app/reset-password#',
+    });
+    if (error) throw error;
+    setResetEmailSent(true);
+    setMessage('Password reset email sent! Check your inbox.');
   } catch (error) {
-    setError(error.message)
+    setError(error.message);
   } finally {
-    setLoading(false)
+    setLoading(false);
   }
 }
-
   // Show forgot password form
   if (isForgotPassword) {
     return (
