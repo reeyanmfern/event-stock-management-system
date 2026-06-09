@@ -199,19 +199,19 @@ export default function Inventory() {
   }
 
   // Open stock modal for product (no variations)
-  function openProductStockModal(product) {
+  function openProductStockModal(product, actionType) {
     setStockTarget({
       type: 'product',
       data: product,
       productName: product.name,
       currentStock: product.quantity || 0
     })
-    setStockUpdate({ type: 'add', quantity: 1, reason: '' })
+    setStockUpdate({ type: actionType, quantity: 1, reason: '' })
     setShowStockModal(true)
   }
 
   // Open stock modal for variation
-  function openVariationStockModal(variation, productName) {
+  function openVariationStockModal(variation, productName, actionType) {
     setStockTarget({
       type: 'variation',
       data: variation,
@@ -219,7 +219,7 @@ export default function Inventory() {
       variationName: `${variation.variation_type}: ${variation.variation_value}`,
       currentStock: variation.quantity || 0
     })
-    setStockUpdate({ type: 'add', quantity: 1, reason: '' })
+    setStockUpdate({ type: actionType, quantity: 1, reason: '' })
     setShowStockModal(true)
   }
 
@@ -452,13 +452,13 @@ export default function Inventory() {
                                 </span>
                                 <div className="flex gap-1">
                                   <button
-                                    onClick={() => openProductStockModal(product)}
+                                    onClick={() => openProductStockModal(product, 'add')}
                                     className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
                                   >
                                     + Add
                                   </button>
                                   <button
-                                    onClick={() => openProductStockModal(product)}
+                                    onClick={() => openProductStockModal(product, 'remove')}
                                     className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
                                   >
                                     - Remove
@@ -505,13 +505,13 @@ export default function Inventory() {
                                 <td className="text-center py-2">
                                   <div className="flex gap-2 justify-center">
                                     <button
-                                      onClick={() => openVariationStockModal(variation, product.name)}
+                                      onClick={() => openVariationStockModal(variation, product.name, 'add')}
                                       className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs"
                                     >
                                       + Add
                                     </button>
                                     <button
-                                      onClick={() => openVariationStockModal(variation, product.name)}
+                                      onClick={() => openVariationStockModal(variation, product.name, 'remove')}
                                       className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs"
                                     >
                                       - Remove
