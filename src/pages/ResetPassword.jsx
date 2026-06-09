@@ -11,13 +11,10 @@ export default function ResetPassword() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Check if we have a hash fragment from Supabase
-    const hashParams = new URLSearchParams(window.location.hash.substring(1))
-    const accessToken = hashParams.get('access_token')
-    
-    if (!accessToken) {
-      // Don't show error immediately - user might be coming from email
-      console.log('No access token found in URL')
+    // Get the access token from URL hash
+    const hash = window.location.hash
+    if (!hash || !hash.includes('access_token')) {
+      setError('Invalid or expired reset link. Please request a new one.')
     }
   }, [])
 

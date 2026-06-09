@@ -7,6 +7,7 @@ import Login from './pages/Login'
 import Reports from './pages/Reports'
 import MultiChannel from './pages/MultiChannel'
 import ResetPassword from './pages/ResetPassword'
+import ResetPasswordCallback from './pages/ResetPasswordCallback'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -121,6 +122,7 @@ function App() {
             <Route path="/reports" element={<Reports />} />
             <Route path="/multichannel" element={<MultiChannel />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/reset-password-callback" element={<ResetPasswordCallback />} /> 
           </Routes>
         </main>
       </div>

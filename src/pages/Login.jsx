@@ -46,13 +46,9 @@ export default function Login() {
   setMessage('')
 
   try {
-    // Use absolute URL for production
-    const redirectUrl = window.location.hostname === 'localhost' 
-      ? 'http://localhost:5173/reset-password'
-      : 'https://u4b-inventory-system.vercel.app/reset-password'
-    
+    // Use the exact production URL
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: redirectUrl,
+      redirectTo: 'https://u4b-inventory-system.vercel.app/reset-password-callback',
     })
     if (error) throw error
     setResetEmailSent(true)
