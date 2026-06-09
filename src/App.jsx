@@ -6,23 +6,53 @@ import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Reports from './pages/Reports'
 import MultiChannel from './pages/MultiChannel'
+import ResetPassword from './pages/ResetPassword'
 
 function App() {
   const [session, setSession] = useState(null)
+  const [userRole, setUserRole] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      setLoading(false)
+      if (session) {
+        fetchUserRole(session.user.id)
+      } else {
+        setLoading(false)
+      }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
+      if (session) {
+        fetchUserRole(session.user.id)
+      } else {
+        setUserRole(null)
+        setLoading(false)
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [])
+
+  async function fetchUserRole(userId) {
+    try {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .single()
+      
+      if (error && error.code !== 'PGRST116') throw error
+      setUserRole(data?.role || 'staff')
+    } catch (error) {
+      console.error('Error fetching user role:', error)
+      setUserRole('staff')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -38,6 +68,8 @@ function App() {
   if (!session) {
     return <Login />
   }
+
+  const isAdmin = userRole === 'admin'
 
   return (
     <Router>
@@ -66,6 +98,9 @@ function App() {
                 </div>
               </div>
               <div className="flex items-center space-x-4">
+                {isAdmin && (
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">Admin</span>
+                )}
                 <span className="text-sm text-gray-600">{session.user.email}</span>
                 <button
                   onClick={() => supabase.auth.signOut()}
@@ -85,6 +120,7 @@ function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/multichannel" element={<MultiChannel />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
           </Routes>
         </main>
       </div>
