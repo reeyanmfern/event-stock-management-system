@@ -1,48 +1,80 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import supabase from '../lib/supabase'
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import supabase from '../lib/supabase';
 
 export default function ResetPassword() {
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
-  const navigate = useNavigate()
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check if we are in a reset session
+    const checkSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error || !data.session) {
+        // No active session, but we might have a token in the URL
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        const type = hashParams.get('type');
+
+        if (accessToken && type === 'recovery') {
+          // We have a valid recovery token in the URL, set the session
+          const { error: setSessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (setSessionError) {
+            console.error('Error setting session:', setSessionError);
+            setError('Invalid or expired reset link. Please request a new one.');
+          } else {
+            setMessage('Link verified! You can now set a new password.');
+          }
+        } else {
+          // No valid token in URL
+          setError('Invalid or expired reset link. Please request a new one.');
+        }
+      }
+    };
+    checkSession();
+  }, []);
 
   async function handleResetPassword(e) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    setMessage('')
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setMessage('');
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match!')
-      setLoading(false)
-      return
+      setError('Passwords do not match!');
+      setLoading(false);
+      return;
     }
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters!')
-      setLoading(false)
-      return
+      setError('Password must be at least 6 characters!');
+      setLoading(false);
+      return;
     }
 
     try {
       const { error } = await supabase.auth.updateUser({
-        password: password
-      })
-      
-      if (error) throw error
-      
-      setMessage('Password updated successfully! Redirecting to login...')
+        password: password,
+      });
+
+      if (error) throw error;
+
+      setMessage('Password updated successfully! Redirecting to login...');
       setTimeout(() => {
-        navigate('/')
-      }, 2000)
+        navigate('/');
+      }, 2000);
     } catch (error) {
-      setError(error.message)
+      setError(error.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -59,7 +91,9 @@ export default function ResetPassword() {
 
         <form onSubmit={handleResetPassword}>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              New Password
+            </label>
             <input
               type="password"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
@@ -71,7 +105,9 @@ export default function ResetPassword() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Confirm Password
+            </label>
             <input
               type="password"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
@@ -103,5 +139,5 @@ export default function ResetPassword() {
         </form>
       </div>
     </div>
-  )
+  );
 }

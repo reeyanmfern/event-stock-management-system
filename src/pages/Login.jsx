@@ -46,9 +46,9 @@ export default function Login() {
   setMessage('')
 
   try {
-    // Use the exact production URL
+    // Send password reset email with redirect to reset-password page
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'https://u4b-inventory-system.vercel.app/reset-password-callback',
+      redirectTo: `${window.location.origin}/reset-password`,
     })
     if (error) throw error
     setResetEmailSent(true)
