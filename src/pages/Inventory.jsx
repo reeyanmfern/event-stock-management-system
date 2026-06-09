@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import supabase from '../lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import * as XLSX from 'xlsx'
@@ -13,10 +13,10 @@ export default function Inventory() {
   const [pastedImage, setPastedImage] = useState(null)
   const imageInputRef = useRef(null)
   
-  // Track which item is being edited
-  const [editingItemId, setEditingItemId] = useState(null)
-  const [editingItemType, setEditingItemType] = useState(null) // 'product' or 'variation'
-  const inputRef = useRef(null)
+  // Stock update modal states
+  const [showStockModal, setShowStockModal] = useState(false)
+  const [stockTarget, setStockTarget] = useState(null) // { type: 'product' or 'variation', data: item, productName: string }
+  const [stockUpdate, setStockUpdate] = useState({ type: 'add', quantity: 1, reason: '' })
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -48,14 +48,6 @@ export default function Inventory() {
   useEffect(() => {
     applyFilters()
   }, [products, searchTerm, selectedCategory])
-
-  // Auto-focus input when editing starts
-  useEffect(() => {
-    if (editingItemId && inputRef.current) {
-      inputRef.current.focus()
-      inputRef.current.select()
-    }
-  }, [editingItemId])
 
   async function fetchProducts() {
     try {
@@ -206,43 +198,58 @@ export default function Inventory() {
     }
   }
 
-  // Start editing a product quantity
-  function startEditingProduct(product) {
-    setEditingItemId(product.id)
-    setEditingItemType('product')
-    setTempQuantity(product.quantity?.toString() || '0')
+  // Open stock modal for product (no variations)
+  function openProductStockModal(product) {
+    setStockTarget({
+      type: 'product',
+      data: product,
+      productName: product.name,
+      currentStock: product.quantity || 0
+    })
+    setStockUpdate({ type: 'add', quantity: 1, reason: '' })
+    setShowStockModal(true)
   }
 
-  // Start editing a variation quantity
-  function startEditingVariation(variation) {
-    setEditingItemId(variation.id)
-    setEditingItemType('variation')
-    setTempQuantity(variation.quantity?.toString() || '0')
+  // Open stock modal for variation
+  function openVariationStockModal(variation, productName) {
+    setStockTarget({
+      type: 'variation',
+      data: variation,
+      productName: productName,
+      variationName: `${variation.variation_type}: ${variation.variation_value}`,
+      currentStock: variation.quantity || 0
+    })
+    setStockUpdate({ type: 'add', quantity: 1, reason: '' })
+    setShowStockModal(true)
   }
 
-  // Save the edited quantity
-  async function saveQuantity(itemId, type, newQuantity) {
+  // Submit stock update
+  async function submitStockUpdate() {
+    const { type, data } = stockTarget
+    const newQuantity = stockUpdate.type === 'add' 
+      ? (data.quantity || 0) + stockUpdate.quantity
+      : (data.quantity || 0) - stockUpdate.quantity
+    
     if (newQuantity < 0) {
-      alert('Quantity cannot be negative!')
-      setEditingItemId(null)
+      alert('Cannot reduce stock below 0!')
       return
     }
     
     // Update local state immediately
     if (type === 'product') {
       setProducts(prevProducts => prevProducts.map(p => 
-        p.id === itemId ? { ...p, quantity: newQuantity } : p
+        p.id === data.id ? { ...p, quantity: newQuantity } : p
       ))
     } else {
       setProducts(prevProducts => prevProducts.map(p => ({
         ...p,
         product_variations: p.product_variations?.map(v => 
-          v.id === itemId ? { ...v, quantity: newQuantity } : v
+          v.id === data.id ? { ...v, quantity: newQuantity } : v
         )
       })))
     }
     
-    setEditingItemId(null)
+    setShowStockModal(false)
     
     // Update database in background
     try {
@@ -250,65 +257,19 @@ export default function Inventory() {
         const { error } = await supabase
           .from('products')
           .update({ quantity: newQuantity })
-          .eq('id', itemId)
+          .eq('id', data.id)
         if (error) throw error
       } else {
         const { error } = await supabase
           .from('product_variations')
           .update({ quantity: newQuantity })
-          .eq('id', itemId)
-        if (error) throw error
-      }
-    } catch (error) {
-      console.error('Error updating quantity:', error)
-      alert('Error updating quantity: ' + error.message)
-      await fetchProducts() // Revert on error
-    }
-  }
-
-  // Quick add/remove (increment/decrement by 1)
-  async function quickStockUpdate(item, type, isVariation = false) {
-    const currentQty = isVariation ? (item.quantity || 0) : (item.quantity || 0)
-    const newQuantity = type === 'add' ? currentQty + 1 : currentQty - 1
-    
-    if (newQuantity < 0) {
-      alert('Cannot go below 0!')
-      return
-    }
-    
-    // Update local state immediately
-    if (isVariation) {
-      setProducts(prevProducts => prevProducts.map(p => ({
-        ...p,
-        product_variations: p.product_variations?.map(v => 
-          v.id === item.id ? { ...v, quantity: newQuantity } : v
-        )
-      })))
-    } else {
-      setProducts(prevProducts => prevProducts.map(p => 
-        p.id === item.id ? { ...p, quantity: newQuantity } : p
-      ))
-    }
-    
-    // Update database in background
-    try {
-      if (isVariation) {
-        const { error } = await supabase
-          .from('product_variations')
-          .update({ quantity: newQuantity })
-          .eq('id', item.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase
-          .from('products')
-          .update({ quantity: newQuantity })
-          .eq('id', item.id)
+          .eq('id', data.id)
         if (error) throw error
       }
     } catch (error) {
       console.error('Error updating stock:', error)
       alert('Error updating stock: ' + error.message)
-      await fetchProducts()
+      await fetchProducts() // Revert on error
     }
   }
 
@@ -483,56 +444,27 @@ export default function Inventory() {
                           
                           {/* Stock Control for products without variations */}
                           {!hasVariations && (
-                            <div className="bg-gray-50 rounded-lg p-3 min-w-[180px]">
+                            <div className="bg-gray-50 rounded-lg p-3 min-w-[160px]">
                               <p className="text-xs text-gray-500 mb-1">Current Stock</p>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    quickStockUpdate(product, 'remove', false)
-                                  }}
-                                  className="bg-red-500 hover:bg-red-600 text-white w-8 h-8 rounded-full font-bold text-lg flex items-center justify-center"
-                                >
-                                  -
-                                </button>
-                                
-                                {editingItemId === product.id && editingItemType === 'product' ? (
-                                  <input
-                                    ref={inputRef}
-                                    type="number"
-                                    className="w-20 text-center py-1 border border-blue-500 rounded-lg focus:outline-none"
-                                    defaultValue={product.quantity || 0}
-                                    onBlur={(e) => {
-                                      saveQuantity(product.id, 'product', parseInt(e.target.value) || 0)
-                                    }}
-                                    onKeyPress={(e) => {
-                                      if (e.key === 'Enter') {
-                                        saveQuantity(product.id, 'product', parseInt(e.target.value) || 0)
-                                      }
-                                    }}
-                                  />
-                                ) : (
-                                  <span 
-                                    className="text-2xl font-bold text-blue-600 cursor-pointer px-3 py-1 rounded-lg hover:bg-blue-50"
-                                    onClick={() => startEditingProduct(product)}
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl font-bold text-blue-600">
+                                  {product.quantity || 0}
+                                </span>
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => openProductStockModal(product)}
+                                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm"
                                   >
-                                    {product.quantity || 0}
-                                  </span>
-                                )}
-                                
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    quickStockUpdate(product, 'add', false)
-                                  }}
-                                  className="bg-green-500 hover:bg-green-600 text-white w-8 h-8 rounded-full font-bold text-lg flex items-center justify-center"
-                                >
-                                  +
-                                </button>
+                                    + Add
+                                  </button>
+                                  <button
+                                    onClick={() => openProductStockModal(product)}
+                                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                                  >
+                                    - Remove
+                                  </button>
+                                </div>
                               </div>
-                              <p className="text-xs text-gray-400 mt-1">Click number to edit</p>
                             </div>
                           )}
                         </div>
@@ -555,7 +487,8 @@ export default function Inventory() {
                               <th className="text-left py-2">Type</th>
                               <th className="text-left py-2">Value</th>
                               <th className="text-left py-2">SKU</th>
-                              <th className="text-center py-2">Stock Control</th>
+                              <th className="text-right py-2">Stock</th>
+                              <th className="text-center py-2">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -564,56 +497,28 @@ export default function Inventory() {
                                 <td className="py-2">{variation.variation_type}</td>
                                 <td className="py-2">{variation.variation_value}</td>
                                 <td className="py-2 text-xs">{variation.sku || '-'}</td>
-                                <td className="py-2">
-                                  <div className="flex items-center justify-center gap-2">
+                                <td className="text-right py-2 font-semibold">
+                                  <span className={`${(variation.quantity || 0) < 10 && (variation.quantity || 0) > 0 ? 'text-orange-600' : (variation.quantity || 0) === 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {variation.quantity || 0}
+                                  </span>
+                                </td>
+                                <td className="text-center py-2">
+                                  <div className="flex gap-2 justify-center">
                                     <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        quickStockUpdate(variation, 'remove', true)
-                                      }}
-                                      className="bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full font-bold text-sm flex items-center justify-center"
+                                      onClick={() => openVariationStockModal(variation, product.name)}
+                                      className="bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded text-xs"
                                     >
-                                      -
+                                      + Add
                                     </button>
-                                    
-                                    {editingItemId === variation.id && editingItemType === 'variation' ? (
-                                      <input
-                                        ref={inputRef}
-                                        type="number"
-                                        className="w-16 text-center py-1 border border-blue-500 rounded-lg text-sm"
-                                        defaultValue={variation.quantity || 0}
-                                        onBlur={(e) => {
-                                          saveQuantity(variation.id, 'variation', parseInt(e.target.value) || 0)
-                                        }}
-                                        onKeyPress={(e) => {
-                                          if (e.key === 'Enter') {
-                                            saveQuantity(variation.id, 'variation', parseInt(e.target.value) || 0)
-                                          }
-                                        }}
-                                      />
-                                    ) : (
-                                      <span 
-                                        className="font-bold text-blue-600 cursor-pointer px-2 py-1 rounded hover:bg-blue-50 min-w-[40px] text-center"
-                                        onClick={() => startEditingVariation(variation)}
-                                      >
-                                        {variation.quantity || 0}
-                                      </span>
-                                    )}
-                                    
                                     <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.preventDefault()
-                                        quickStockUpdate(variation, 'add', true)
-                                      }}
-                                      className="bg-green-500 hover:bg-green-600 text-white w-7 h-7 rounded-full font-bold text-sm flex items-center justify-center"
+                                      onClick={() => openVariationStockModal(variation, product.name)}
+                                      className="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded text-xs"
                                     >
-                                      +
+                                      - Remove
                                     </button>
                                   </div>
                                 </td>
-                               </table>
+                              </tr>
                             ))}
                           </tbody>
                         </table>
@@ -624,6 +529,56 @@ export default function Inventory() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Stock Update Modal */}
+      {showStockModal && stockTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold mb-4">
+              {stockUpdate.type === 'add' ? '➕ Add Stock' : '➖ Remove Stock'}
+            </h2>
+            <p className="text-gray-600 mb-4">
+              Product: <span className="font-semibold">{stockTarget.productName}</span>
+              {stockTarget.variationName && (
+                <span className="block text-sm text-gray-500">
+                  Variation: {stockTarget.variationName}
+                </span>
+              )}
+              <br />
+              Current Stock: <span className="font-semibold text-blue-600">{stockTarget.currentStock}</span>
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Quantity</label>
+              <input
+                type="number"
+                min="1"
+                value={stockUpdate.quantity}
+                onChange={(e) => setStockUpdate({...stockUpdate, quantity: parseInt(e.target.value) || 1})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                autoFocus
+              />
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium mb-1">Reason (Optional)</label>
+              <input
+                type="text"
+                value={stockUpdate.reason}
+                onChange={(e) => setStockUpdate({...stockUpdate, reason: e.target.value})}
+                placeholder="e.g., New batch, Sold, Damaged"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div className="flex space-x-3">
+              <button onClick={submitStockUpdate} className={`flex-1 text-white font-semibold py-2 px-4 rounded-lg ${stockUpdate.type === 'add' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                Confirm {stockUpdate.type === 'add' ? 'Add' : 'Remove'}
+              </button>
+              <button onClick={() => setShowStockModal(false)} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg">
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
