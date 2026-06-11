@@ -15,6 +15,8 @@ export default function Transactions() {
 
   // New Sale form
   const [showSaleModal, setShowSaleModal] = useState(false)
+  const [showClearAllModal, setShowClearAllModal] = useState(false)
+  const [clearingAll, setClearingAll] = useState(false)
   const [products, setProducts] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -44,7 +46,7 @@ export default function Transactions() {
         .from('transactions')
         .select(`
           *,
-          products (name, category, size, price)
+          products (code, name, category, size, price)
         `)
         .order('created_at', { ascending: false })
 
@@ -180,6 +182,79 @@ export default function Transactions() {
     }
   }
 
+  async function handleDeleteTransaction(tx) {
+    const confirmed = window.confirm(
+      `Delete this transaction?\n\n${tx.event_name || 'Unknown event'} — ${tx.products?.code || tx.products?.name || 'Product'} x${tx.quantity}\n\nThis will restore ${tx.quantity} unit(s) back to stock.`
+    )
+    if (!confirmed) return
+
+    try {
+      // Restore stock quantity
+      if (tx.product_id) {
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('quantity')
+          .eq('id', tx.product_id)
+          .single()
+
+        if (!productError && product) {
+          await supabase
+            .from('products')
+            .update({ quantity: product.quantity + tx.quantity })
+            .eq('id', tx.product_id)
+        }
+      }
+
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', tx.id)
+
+      if (error) throw error
+
+      await fetchTransactions()
+    } catch (error) {
+      alert('Error deleting transaction: ' + error.message)
+    }
+  }
+
+  async function handleClearAllTransactions() {
+    setClearingAll(true)
+    try {
+      // Restore stock for every transaction being deleted
+      for (const tx of transactions) {
+        if (tx.product_id) {
+          const { data: product, error: productError } = await supabase
+            .from('products')
+            .select('quantity')
+            .eq('id', tx.product_id)
+            .single()
+
+          if (!productError && product) {
+            await supabase
+              .from('products')
+              .update({ quantity: product.quantity + tx.quantity })
+              .eq('id', tx.product_id)
+          }
+        }
+      }
+
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .not('id', 'is', null) // delete all rows
+
+      if (error) throw error
+
+      await fetchTransactions()
+      setShowClearAllModal(false)
+    } catch (error) {
+      alert('Error clearing transactions: ' + error.message)
+    } finally {
+      setClearingAll(false)
+    }
+  }
+
   function applyFilters() {
     let filtered = [...transactions]
 
@@ -216,7 +291,7 @@ export default function Transactions() {
     const exportData = filteredTransactions.map(tx => ({
       'Date': new Date(tx.created_at).toLocaleString(),
       'Event': tx.event_name || '-',
-      'Product': tx.products?.name || '-',
+      'Product': tx.products?.code || tx.products?.name || '-',
       'Category': tx.products?.category || '-',
       'Size': tx.products?.size || '-',
       'Quantity': tx.quantity,
@@ -266,6 +341,17 @@ export default function Transactions() {
             </svg>
             Export
           </button>
+          {transactions.length > 0 && (
+            <button
+              onClick={() => setShowClearAllModal(true)}
+              className="bg-white hover:bg-red-50 text-red-600 font-medium py-2.5 px-4 rounded-xl border border-gray-200 hover:border-red-200 flex items-center gap-2 text-sm transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Clear All
+            </button>
+          )}
           <button
             onClick={openSaleModal}
             className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-4 rounded-xl flex items-center gap-2 text-sm transition-colors shadow-sm"
@@ -354,12 +440,13 @@ export default function Transactions() {
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Total (RM)</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Person in Charge</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Receipt</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center py-12 text-gray-400 text-sm">
+                  <td colSpan="8" className="text-center py-12 text-gray-400 text-sm">
                     No transactions found
                   </td>
                 </tr>
@@ -373,7 +460,7 @@ export default function Transactions() {
                       <span className="font-medium text-gray-900 text-sm">{tx.event_name || '-'}</span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="font-medium text-gray-900 text-sm">{tx.products?.name || '-'}</span>
+                      <span className="font-medium text-gray-900 text-sm">{tx.products?.code || tx.products?.name || '-'}</span>
                       <br />
                       <span className="text-xs text-gray-400">
                         {tx.products?.category} {tx.products?.size ? `· ${tx.products.size}` : ''}
@@ -400,6 +487,17 @@ export default function Transactions() {
                       ) : (
                         <span className="text-gray-300 text-sm">—</span>
                       )}
+                    </td>
+                    <td className="py-3 px-4">
+                      <button
+                        onClick={() => handleDeleteTransaction(tx)}
+                        className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete transaction"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -456,7 +554,7 @@ export default function Transactions() {
                   <option value="">Select product</option>
                   {products.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.name} {p.size ? `(${p.size})` : ''} — {p.quantity} in stock
+                      {p.code || p.name} {p.size ? `(${p.size})` : ''} — {p.quantity} in stock
                     </option>
                   ))}
                 </select>
@@ -598,6 +696,44 @@ export default function Transactions() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Modal */}
+      {showClearAllModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl p-6">
+            <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Delete all transactions?</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              This will permanently delete all {transactions.length} transaction record(s) and restore the sold quantities back to stock. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowClearAllModal(false)}
+                disabled={clearingAll}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2.5 px-4 rounded-xl transition-colors text-sm disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearAllTransactions}
+                disabled={clearingAll}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors text-sm disabled:opacity-60"
+              >
+                {clearingAll ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Deleting...
+                  </span>
+                ) : 'Delete All'}
+              </button>
+            </div>
           </div>
         </div>
       )}
