@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom'
 import supabase from './lib/supabase'
 import Inventory from './pages/Inventory'
 import Dashboard from './pages/Dashboard'
@@ -15,6 +15,13 @@ function AppContent() {
   const [loading, setLoading] = useState(true)
   // KEY FIX: track when Supabase fires a PASSWORD_RECOVERY event
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const location = useLocation()
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [location.pathname])
 
   useEffect(() => {
     // Get initial session
@@ -109,6 +116,18 @@ function AppContent() {
   // Authenticated routes
   const isAdmin = userRole === 'admin'
 
+  const navLinks = [
+    { to: '/', label: 'Dashboard' },
+    { to: '/inventory', label: 'Inventory' },
+    { to: '/transactions', label: 'Transactions' },
+    { to: '/reports', label: 'Reports' },
+    { to: '/multichannel', label: 'Multi-Channel' },
+  ]
+
+  function isActive(path) {
+    return location.pathname === path
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navigation Bar */}
@@ -123,37 +142,87 @@ function AppContent() {
                 <h1 className="text-lg font-bold text-gray-900">U4B Inventory</h1>
               </div>
               <div className="hidden md:flex space-x-1">
-                <Link to="/" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
-                  Dashboard
-                </Link>
-                <Link to="/inventory" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
-                  Inventory
-                </Link>
-                <Link to="/transactions" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
-                  Transactions
-                </Link>
-                <Link to="/reports" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
-                  Reports
-                </Link>
-                <Link to="/multichannel" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
-                  Multi-Channel
-                </Link>
+                {navLinks.map(link => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                      isActive(link.to)
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </div>
             </div>
             <div className="flex items-center space-x-3">
               {isAdmin && (
-                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">Admin</span>
+                <span className="hidden sm:inline-block text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium">Admin</span>
               )}
-              <span className="text-sm text-gray-500 hidden sm:block">{session.user.email}</span>
+              <span className="text-sm text-gray-500 hidden lg:block">{session.user.email}</span>
               <button
                 onClick={() => supabase.auth.signOut()}
-                className="bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 border border-gray-200 hover:border-red-200"
+                className="hidden md:inline-flex bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 border border-gray-200 hover:border-red-200"
               >
                 Sign out
+              </button>
+
+              {/* Hamburger button - mobile only */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                aria-label="Toggle menu"
+              >
+                {mobileMenuOpen ? (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
               </button>
             </div>
           </div>
         </div>
+
+        {/* Mobile dropdown menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-100 bg-white">
+            <div className="px-4 py-3 space-y-1">
+              {navLinks.map(link => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive(link.to)
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-700 hover:text-blue-600 hover:bg-blue-50'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+              <div className="pt-2 mt-2 border-t border-gray-100 flex items-center justify-between">
+                <div className="text-sm text-gray-500 truncate pr-3">
+                  {session.user.email}
+                  {isAdmin && (
+                    <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">Admin</span>
+                  )}
+                </div>
+                <button
+                  onClick={() => supabase.auth.signOut()}
+                  className="bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 border border-gray-200 hover:border-red-200 flex-shrink-0"
+                >
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Main Content */}
