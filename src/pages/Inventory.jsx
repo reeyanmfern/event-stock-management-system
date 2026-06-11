@@ -151,35 +151,53 @@ export default function Inventory() {
   }
 
   async function handleSubmit(e) {
-    e.preventDefault()
-    setLoading(true)
+  e.preventDefault()
+  setLoading(true)
 
-    try {
-      if (editingProduct) {
-        const { error } = await supabase
-          .from('products')
-          .update(formData)
-          .eq('id', editingProduct.id)
-        
-        if (error) throw error
-      } else {
-        const { error } = await supabase
-          .from('products')
-          .insert([formData])
-        
-        if (error) throw error
-      }
-      
-      await fetchProducts()
-      setShowModal(false)
-      resetForm()
-    } catch (error) {
-      console.error('Error saving product:', error)
-      alert('Error saving product: ' + error.message)
-    } finally {
-      setLoading(false)
+  try {
+    // Clean the data before sending
+    const cleanData = {
+      code: formData.code || null,
+      name: formData.name,
+      category: formData.category,
+      sub_category: formData.sub_category || null,
+      size: formData.size || 'One Size',
+      variety: formData.variety || null,
+      material: formData.material || null,
+      weight_grams: formData.weight_grams ? parseInt(formData.weight_grams) : null,
+      dimensions: formData.dimensions || null,
+      price: formData.price ? parseFloat(formData.price) : 0,
+      main_sku: formData.main_sku || null,
+      image_url: formData.image_url || null,
+      status: formData.status || 'active',
+      quantity: formData.quantity ? parseInt(formData.quantity) : 0
     }
+
+    if (editingProduct) {
+      const { error } = await supabase
+        .from('products')
+        .update(cleanData)
+        .eq('id', editingProduct.id)
+      
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('products')
+        .insert([cleanData])
+      
+      if (error) throw error
+    }
+    
+    await fetchProducts()
+    setShowModal(false)
+    resetForm()
+  } catch (error) {
+    console.error('Error saving product:', error)
+    alert('Error saving product: ' + error.message)
+  } finally {
+    setLoading(false)
   }
+}
 
   async function handleDeleteProduct(id) {
     if (confirm('Are you sure you want to delete this product?')) {
