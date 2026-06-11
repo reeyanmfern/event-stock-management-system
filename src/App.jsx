@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Reports from './pages/Reports'
 import MultiChannel from './pages/MultiChannel'
+import Transactions from './pages/Transactions'
 import UpdatePassword from './pages/UpdatePassword'
 
 function AppContent() {
@@ -128,6 +129,9 @@ function AppContent() {
                 <Link to="/inventory" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
                   Inventory
                 </Link>
+                <Link to="/transactions" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
+                  Transactions
+                </Link>
                 <Link to="/reports" className="text-gray-600 hover:text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150">
                   Reports
                 </Link>
@@ -157,6 +161,7 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/inventory" element={<Inventory />} />
+          <Route path="/transactions" element={<Transactions />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/multichannel" element={<MultiChannel />} />
         </Routes>
